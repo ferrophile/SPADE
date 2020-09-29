@@ -1,0 +1,11 @@
+python3 train.py \
+--name struct3d \
+--gpu_ids 0,1,2,3 \
+--batchSize 4 \
+--dataroot ../Structured3D/ \
+--dataset_mode struct3d \
+--nThreads 8 \
+--use_vae \
+--niter 50 \
+--niter_decay 0 \
+--save_epoch_freq 10
