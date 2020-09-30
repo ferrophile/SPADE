@@ -5,7 +5,7 @@ import torch
 class IndoorModel(Pix2PixModel):
     def preprocess_input(self, data):
         # move to GPU and change data types
-        data['label'] = data['label'].long()
+        data['label'] = data['label']
         if self.use_gpu():
             data['label'] = data['label'].cuda()
             data['image'] = data['image'].cuda()
@@ -17,7 +17,12 @@ class IndoorModel(Pix2PixModel):
         nc = self.opt.label_nc + 1 if self.opt.contain_dontcare_label \
             else self.opt.label_nc
         input_label = self.FloatTensor(bs, nc, h, w).zero_()
-        input_semantics = input_label.scatter_(1, label_map, 1.0)
+        
+        if label_map.shape[1] == 1:
+            label_map = label_map.long()
+            input_semantics = input_label.scatter_(1, label_map, 1.0)
+        else:
+            input_semantics = label_map
 
         return input_semantics, data['image'], data['empty_image']
 
