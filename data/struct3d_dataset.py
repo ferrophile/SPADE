@@ -1,22 +1,20 @@
-from data.image_folder import make_dataset
 from data.base_dataset import BaseDataset, get_params, get_transform
 import util.util as util
 
 from PIL import Image
-import torch, cv2
+import os
+import cv2
+import torch
 import numpy as np
 
-def _is_label(path):
-    splits = path.split('/')
-    return splits[-1] == 'semantic.png' and splits[-3] == 'full'
 
-def _is_image(path):
-    splits = path.split('/')
-    return splits[-1] == 'rgb_rawlight.png' and splits[-3] == 'full'
+def fetch_struct3d_path(root, sample, isfull, fn):
+    scene, room, pos = sample
+    path = '{}/2D_rendering/{}/perspective/{}/{}/{}.png'.format(
+        scene, room, isfull, pos, fn)
+    path = os.path.join(root, path)
+    return path
 
-def _is_empty_image(path):
-    splits = path.split('/')
-    return splits[-1] == 'rgb_rawlight.png' and splits[-3] == 'empty'
 
 class Struct3DDataset(BaseDataset):
 
@@ -54,7 +52,7 @@ class Struct3DDataset(BaseDataset):
 
         self.label_paths = label_paths
         self.image_paths = image_paths
-        self.empty_image_paths = image_paths
+        self.empty_image_paths = empty_image_paths
 
         size = len(self.label_paths)
         self.dataset_size = size
@@ -66,14 +64,15 @@ class Struct3DDataset(BaseDataset):
     def get_paths(self, opt):
         root = opt.dataroot
         phase = 'val' if opt.phase == 'test' else 'train'
-        all_images = make_dataset(root, recursive=True, read_cache=False, write_cache=False)
-        label_paths = [path for path in all_images if _is_label(path)]
-        image_paths = [path for path in all_images if _is_image(path)]
-        empty_image_paths = [path for path in all_images if _is_empty_image(path)]
-        assert len(image_paths) == len(label_paths) == len(empty_image_paths)
 
-        instance_paths = []
-        return label_paths, image_paths, empty_image_paths
+        split_list_path = os.path.join(opt.dataroot, '{}_split.csv'.format(opt.phase))
+        split_list = np.genfromtxt(split_list_path, delimiter=',', dtype='|U')
+        label_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'semantic') for sample in split_list]
+        image_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'rgb_rawlight') for sample in split_list]
+        empty_paths = [fetch_struct3d_path(opt.dataroot, sample, 'empty', 'rgb_rawlight') for sample in split_list]
+
+        assert len(image_paths) == len(label_paths) == len(empty_paths)
+        return label_paths, image_paths, empty_paths
 
     def get_onehot_box_tensor(self, label_tensor):
         label_tensor = label_tensor.view(label_tensor.size(1), label_tensor.size(2))
@@ -93,7 +92,7 @@ class Struct3DDataset(BaseDataset):
             temp_label = np.zeros(label_np.shape)
             temp_label[label_np==label_id] = label_id
             temp_label = temp_label.astype('uint8')
-            contours, hierarchy = cv2.findContours(temp_label,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            contours, hierarchy = cv2.findContours(temp_label,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)[-2:]
             for conid in range(len(contours)):
                 mask = np.zeros(label_np.shape, dtype="uint8") * 255
                 cv2.drawContours(mask, contours, conid, int(label_id), -1)
@@ -107,7 +106,7 @@ class Struct3DDataset(BaseDataset):
                 y2 = max(j)
                 if ((x2-x1) * (y2-y1)) < 30:
                     continue
-                save_label[indices] = label_id
+                save_label[tuple(indices)] = label_id
                 save_label_batch = save_label.reshape((1,1,)+save_label.shape)
                 save_label_tensor = torch.from_numpy(save_label_batch).long()
                 label_onehot_tensor.scatter_(1, save_label_tensor, 1.0)

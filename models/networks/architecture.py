@@ -25,6 +25,10 @@ class SPADEResnetBlock(nn.Module):
         self.learned_shortcut = (fin != fout)
         fmiddle = min(fin, fout)
 
+        self.bg_con = opt.bg_con
+        if self.bg_con:
+            self.conv_bg = nn.Conv2d(fin + 3, fin, kernel_size=3, padding=1)
+
         # create conv layers
         self.conv_0 = nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1)
         self.conv_1 = nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1)
@@ -47,7 +51,12 @@ class SPADEResnetBlock(nn.Module):
 
     # note the resnet block with SPADE also takes in |seg|,
     # the semantic segmentation map as input
-    def forward(self, x, seg):
+    def forward(self, x, seg, bg=None):
+        if self.bg_con:
+            bg = F.interpolate(bg, size=x.shape[2:])
+            x = torch.cat((x, bg), dim=1)
+            x = self.actvn(self.conv_bg(x))
+
         x_s = self.shortcut(x, seg)
 
         dx = self.conv_0(self.actvn(self.norm_0(x, seg)))
@@ -66,6 +75,9 @@ class SPADEResnetBlock(nn.Module):
 
     def actvn(self, x):
         return F.leaky_relu(x, 2e-1)
+
+    def interpolate(self, x):
+        return F.interpolate()
 
 
 # ResNet block used in pix2pixHD

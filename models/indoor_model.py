@@ -93,3 +93,21 @@ class IndoorModel(Pix2PixModel):
                                                for_discriminator=True)
 
         return D_losses
+
+    def generate_fake(self, input_semantics, empty_image, compute_kld_loss=False):
+        z = None
+        KLD_loss = None
+        if self.opt.use_vae:
+            z, mu, logvar = self.encode_z(empty_image)
+            if compute_kld_loss:
+                KLD_loss = self.KLDLoss(mu, logvar) * self.opt.lambda_kld
+
+        if self.opt.bg_con:
+            fake_image = self.netG(input_semantics, z=z, bg=empty_image)
+        else:
+            fake_image = self.netG(input_semantics, z=z)
+
+        assert (not compute_kld_loss) or self.opt.use_vae, \
+            "You cannot compute KLD loss if opt.use_vae == False"
+
+        return fake_image, KLD_loss

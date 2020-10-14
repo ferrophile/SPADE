@@ -8,7 +8,8 @@ from collections import OrderedDict
 
 import data
 from options.test_options import TestOptions
-from models.pix2pix_model import Pix2PixModel
+# from models.pix2pix_model import Pix2PixModel
+from models.indoor_model import IndoorModel
 from util.visualizer import Visualizer
 from util import html
 
@@ -16,7 +17,8 @@ opt = TestOptions().parse()
 
 dataloader = data.create_dataloader(opt)
 
-model = Pix2PixModel(opt)
+model = IndoorModel(opt)
+# model = Pix2PixModel(opt)
 model.eval()
 
 visualizer = Visualizer(opt)
@@ -39,7 +41,8 @@ for i, data_i in enumerate(dataloader):
     for b in range(generated.shape[0]):
         print('process image... %s' % img_path[b])
         visuals = OrderedDict([('input_label', data_i['label'][b]),
-                               ('synthesized_image', generated[b])])
+                               ('synthesized_image', generated[b]),
+                               ('empty_image', data_i['empty_image'][b])])
         visualizer.save_images(webpage, visuals, img_path[b:b + 1])
 
 webpage.save()

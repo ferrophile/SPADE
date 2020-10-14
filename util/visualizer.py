@@ -4,7 +4,7 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
 
 import os
-import ntpath
+# import ntpath
 import time
 from . import util
 from . import html
@@ -137,10 +137,12 @@ class Visualizer():
 
     # save image to the disk
     def save_images(self, webpage, visuals, image_path):        
-        visuals = self.convert_visuals_to_numpy(visuals)        
+        visuals = self.convert_visuals_to_numpy(visuals)
         
         image_dir = webpage.get_image_dir()
-        short_path = ntpath.basename(image_path[0])
+        # short_path = ntpath.basename(image_path[0])
+        splits = image_path[0].split('/')
+        short_path = '{}_{}_{}.png'.format(splits[-7], splits[-5], splits[-2])
         name = os.path.splitext(short_path)[0]
 
         webpage.add_header(name)
