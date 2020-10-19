@@ -11,7 +11,7 @@ from scipy import stats
 
 def fetch_struct3d_path(root, sample, isfull, fn):
     scene, room, pos = sample
-    path = '{}/2D_rendering/{}/perspective/{}/{}/{}.png'.format(
+    path = '{}/2D_rendering/{}/perspective/{}/{}/{}'.format(
         scene, room, isfull, pos, fn)
     path = os.path.join(root, path)
     return path
@@ -41,22 +41,19 @@ class Struct3DDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
 
-        label_paths, instance_paths, image_paths, empty_image_paths = self.get_paths(opt)
+        label_paths, instance_paths, image_paths, empty_image_paths, pose_paths = self.get_paths(opt)
 
         util.natural_sort(label_paths)
         util.natural_sort(instance_paths)
         util.natural_sort(image_paths)
         util.natural_sort(empty_image_paths)
+        util.natural_sort(pose_paths)
 
-        label_paths = label_paths[:opt.max_dataset_size]
-        instance_paths = instance_paths[:opt.max_dataset_size]
-        image_paths = image_paths[:opt.max_dataset_size]
-        empty_image_paths = empty_image_paths[:opt.max_dataset_size]
-
-        self.label_paths = label_paths
-        self.instance_paths = instance_paths
-        self.image_paths = image_paths
-        self.empty_image_paths = empty_image_paths
+        self.label_paths = label_paths[:opt.max_dataset_size]
+        self.instance_paths = instance_paths[:opt.max_dataset_size]
+        self.image_paths = image_paths[:opt.max_dataset_size]
+        self.empty_image_paths = empty_image_paths[:opt.max_dataset_size]
+        self.pose_paths = pose_paths[:opt.max_dataset_size]
 
         size = len(self.label_paths)
         self.dataset_size = size
@@ -65,18 +62,16 @@ class Struct3DDataset(BaseDataset):
         self.class_ids = {c[0]: i for (i, c) in enumerate(classes)}
 
     def get_paths(self, opt):
-        root = opt.dataroot
-        phase = 'val' if opt.phase == 'test' else 'train'
-
         split_list_path = os.path.join(opt.dataroot, '{}_split.csv'.format(opt.phase))
         split_list = np.genfromtxt(split_list_path, delimiter=',', dtype='|U')
-        label_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'semantic') for sample in split_list]
-        instance_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'instance') for sample in split_list]
-        image_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'rgb_rawlight') for sample in split_list]
-        empty_paths = [fetch_struct3d_path(opt.dataroot, sample, 'empty', 'rgb_rawlight') for sample in split_list]
+        label_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'semantic.png') for sample in split_list]
+        instance_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'instance.png') for sample in split_list]
+        image_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'rgb_rawlight.png') for sample in split_list]
+        empty_paths = [fetch_struct3d_path(opt.dataroot, sample, 'empty', 'rgb_rawlight.png') for sample in split_list]
+        pose_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'camera_pose.txt') for sample in split_list]
 
         assert len(image_paths) == len(label_paths) == len(empty_paths)
-        return label_paths, instance_paths, image_paths, empty_paths
+        return label_paths, instance_paths, image_paths, empty_paths, pose_paths
 
     def get_label_onehot_tensor(self, label_tensor, instance_np):
         label_np = label_tensor.squeeze().numpy().astype(np.int)
@@ -128,11 +123,17 @@ class Struct3DDataset(BaseDataset):
         empty_image = Image.open(empty_image_path)
         empty_image = empty_image.convert('RGB')
         empty_image_tensor = transform_image(empty_image)
+
+        # camera pose
+        pose_path = self.pose_paths[index]
+        pose_np = np.genfromtxt(pose_path, delimiter=' ')
+        pose_tensor = torch.Tensor(pose_np[:6])
         
         input_dict = {
             'label': label_onehot_tensor,
             'image': image_tensor,
             'empty_image': empty_image_tensor,
+            'pose': pose_tensor,
             'path': image_path
         }
 

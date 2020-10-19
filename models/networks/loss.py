@@ -118,3 +118,19 @@ class VGGLoss(nn.Module):
 class KLDLoss(nn.Module):
     def forward(self, mu, logvar):
         return -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+
+class PoseLoss(nn.Module):
+    def __init__(self):
+        super(PoseLoss, self).__init__()
+        self.alpha = nn.Parameter(torch.Tensor(1)).cuda()
+        self.beta = nn.Parameter(torch.Tensor(1)).cuda()
+        nn.init.normal_(self.alpha.data, mean=0, std=0.1)
+        nn.init.normal_(self.beta.data, mean=0, std=0.1)
+
+    def forward(self, pred_pose, real_pose):
+        diff_t, diff_q = torch.split(pred_pose - real_pose, [3, 3], dim=1)
+        norm_t = torch.norm(diff_t)
+        norm_q = torch.norm(diff_q)
+
+        return torch.exp(-self.beta) * norm_t + self.beta + torch.exp(-self.alpha) * norm_q + self.alpha

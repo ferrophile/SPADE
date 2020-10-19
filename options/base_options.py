@@ -27,6 +27,7 @@ class BaseOptions():
         parser.add_argument('--norm_G', type=str, default='spectralinstance', help='instance normalization or batch normalization')
         parser.add_argument('--norm_D', type=str, default='spectralinstance', help='instance normalization or batch normalization')
         parser.add_argument('--norm_E', type=str, default='spectralinstance', help='instance normalization or batch normalization')
+        parser.add_argument('--norm_P', type=str, default='spectralinstance', help='instance normalization or batch normalization')
         parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
 
         # input/output sizes

@@ -1,8 +1,51 @@
 from models.pix2pix_model import Pix2PixModel
-
 import torch
+import models.networks as networks
+import util.util as util
+
 
 class IndoorModel(Pix2PixModel):
+    def __init__(self, opt):
+        torch.nn.Module.__init__(self)
+        self.opt = opt
+        self.FloatTensor = torch.cuda.FloatTensor if self.use_gpu() \
+            else torch.FloatTensor
+        self.ByteTensor = torch.cuda.ByteTensor if self.use_gpu() \
+            else torch.ByteTensor
+
+        self.netG, self.netD, self.netE, self.netP = self.initialize_networks(opt)
+
+        # set loss functions
+        if opt.isTrain:
+            self.criterionGAN = networks.GANLoss(
+                opt.gan_mode, tensor=self.FloatTensor, opt=self.opt)
+            self.criterionPose = networks.PoseLoss()
+            self.criterionFeat = torch.nn.L1Loss()
+            if not opt.no_vgg_loss:
+                self.criterionVGG = networks.VGGLoss(self.opt.gpu_ids)
+            if opt.use_vae:
+                self.KLDLoss = networks.KLDLoss()
+
+    def initialize_networks(self, opt):
+        netG, netD, netE = Pix2PixModel.initialize_networks(self, opt)
+        netP = networks.define_P(opt)
+        if not opt.isTrain or opt.continue_train:
+            netP = util.load_network(netP, 'P', opt.which_epoch, opt)
+
+        return netG, netD, netE, netP
+
+    def create_pose_optimizer(self, opt):
+        P_params = list(self.netP.parameters())
+
+        beta1, beta2 = opt.beta1, opt.beta2
+        if opt.no_TTUR:
+            G_lr, D_lr = opt.lr, opt.lr
+        else:
+            G_lr, D_lr = opt.lr / 2, opt.lr * 2
+
+        optimizer_P = torch.optim.Adam(P_params, lr=G_lr, betas=(beta1, beta2))
+        return optimizer_P
+
     def preprocess_input(self, data):
         # move to GPU and change data types
         data['label'] = data['label']
@@ -10,6 +53,7 @@ class IndoorModel(Pix2PixModel):
             data['label'] = data['label'].cuda()
             data['image'] = data['image'].cuda()
             data['empty_image'] = data['empty_image'].cuda()
+            data['pose'] = data['pose'].cuda()
 
         # create one-hot label map
         label_map = data['label']
@@ -24,10 +68,10 @@ class IndoorModel(Pix2PixModel):
         else:
             input_semantics = label_map
 
-        return input_semantics, data['image'], data['empty_image']
+        return input_semantics, data['image'], data['empty_image'], data['pose']
 
     def forward(self, data, mode):
-        input_semantics, real_image, empty_image = self.preprocess_input(data)
+        input_semantics, real_image, empty_image, pose = self.preprocess_input(data)
 
         if mode == 'generator':
             g_loss, generated = self.compute_generator_loss(input_semantics, real_image, empty_image)
@@ -35,6 +79,9 @@ class IndoorModel(Pix2PixModel):
         elif mode == 'discriminator':
             d_loss = self.compute_discriminator_loss(input_semantics, real_image, empty_image)
             return d_loss
+        elif mode == 'train_pose':
+            p_loss, pred_pose = self.compute_perspective_loss(real_image, pose)
+            return p_loss, pred_pose
         elif mode == 'encode_only':
             z, mu, logvar = self.encode_z(empty_image)
             return mu, logvar
@@ -93,6 +140,13 @@ class IndoorModel(Pix2PixModel):
                                                for_discriminator=True)
 
         return D_losses
+
+    def compute_perspective_loss(self, real_image, real_pose):
+        losses = {}
+
+        pred_pose = self.netP(real_image)
+        losses['pose'] = self.criterionPose(pred_pose, real_pose)
+        return losses, pred_pose
 
     def generate_fake(self, input_semantics, empty_image, compute_kld_loss=False):
         z = None

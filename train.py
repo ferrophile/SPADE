@@ -10,6 +10,7 @@ import data
 from util.iter_counter import IterationCounter
 from util.visualizer import Visualizer
 from trainers.pix2pix_trainer import Pix2PixTrainer
+from trainers.pose_trainer import PoseTrainer
 
 # parse options
 opt = TrainOptions().parse()
@@ -21,7 +22,8 @@ print(' '.join(sys.argv))
 dataloader = data.create_dataloader(opt)
 
 # create trainer for our model
-trainer = Pix2PixTrainer(opt)
+# trainer = Pix2PixTrainer(opt)
+trainer = PoseTrainer(opt)
 
 # create tool for counting iterations
 iter_counter = IterationCounter(opt, len(dataloader))
@@ -34,6 +36,7 @@ for epoch in iter_counter.training_epochs():
     for i, data_i in enumerate(dataloader, start=iter_counter.epoch_iter):
         iter_counter.record_one_iteration()
 
+        '''
         # Training
         # train generator
         if i % opt.D_steps_per_G == 0:
@@ -41,6 +44,8 @@ for epoch in iter_counter.training_epochs():
 
         # train discriminator
         trainer.run_discriminator_one_step(data_i)
+        '''
+        trainer.train_one_step(data_i)
 
         # Visualizations
         if iter_counter.needs_printing():
@@ -49,12 +54,14 @@ for epoch in iter_counter.training_epochs():
                                             losses, iter_counter.time_per_iter)
             visualizer.plot_current_errors(losses, iter_counter.total_steps_so_far)
 
+        '''
         if iter_counter.needs_displaying():
             visuals = OrderedDict([('input_label', data_i['label']),
                                    ('synthesized_image', trainer.get_latest_generated()),
                                    ('empty_image', data_i['empty_image']),
                                    ('real_image', data_i['image'])])
             visualizer.display_current_results(visuals, epoch, iter_counter.total_steps_so_far)
+        '''
 
         if iter_counter.needs_saving():
             print('saving the latest model (epoch %d, total_steps %d)' %
