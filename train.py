@@ -31,6 +31,9 @@ iter_counter = IterationCounter(opt, len(dataloader))
 # create tool for visualization
 visualizer = Visualizer(opt)
 
+print('Pre-training pose network...')
+pose_phase = True
+
 for epoch in iter_counter.training_epochs():
     iter_counter.record_epoch_start(epoch)
     for i, data_i in enumerate(dataloader, start=iter_counter.epoch_iter):
@@ -66,7 +69,7 @@ for epoch in iter_counter.training_epochs():
         if iter_counter.needs_saving():
             print('saving the latest model (epoch %d, total_steps %d)' %
                   (epoch, iter_counter.total_steps_so_far))
-            trainer.save('latest')
+            trainer.save('latest', pose_phase)
             iter_counter.record_current_iter()
 
     trainer.update_learning_rate(epoch)
@@ -76,7 +79,7 @@ for epoch in iter_counter.training_epochs():
        epoch == iter_counter.total_epochs:
         print('saving the model at the end of epoch %d, iters %d' %
               (epoch, iter_counter.total_steps_so_far))
-        trainer.save('latest')
-        trainer.save(epoch)
+        trainer.save('latest', pose_phase)
+        trainer.save(epoch, pose_phase)
 
 print('Training was successfully finished.')

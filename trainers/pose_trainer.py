@@ -15,15 +15,19 @@ class PoseTrainer():
 
         self.generated = None
         if opt.isTrain:
-            self.optimizer_P = self.indoor_model_on_one_gpu.create_pose_optimizer(opt)
+            self.optimizer_P, self.optimizer_PL = self.indoor_model_on_one_gpu.create_pose_optimizer(opt)
             self.old_lr = opt.lr
 
     def train_one_step(self, data):
         self.optimizer_P.zero_grad()
+        self.optimizer_PL.zero_grad()
+
         p_losses, pose = self.indoor_model(data, mode='train_pose')
+        # p_loss = p_losses['pose'].mean()
         p_loss = sum(p_losses.values()).mean()
         p_loss.backward()
         self.optimizer_P.step()
+        # self.optimizer_PL.step()
         self.p_losses = p_losses
         self.pose = pose
 
@@ -33,8 +37,8 @@ class PoseTrainer():
     def get_latest_generated(self):
         return self.pose
 
-    def save(self, epoch):
-        self.indoor_model_on_one_gpu.save(epoch)
+    def save(self, epoch, pose_phase):
+        self.indoor_model_on_one_gpu.save(epoch, pose_phase)
 
     ##################################################################
     # Helper functions

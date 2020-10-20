@@ -123,14 +123,19 @@ class KLDLoss(nn.Module):
 class PoseLoss(nn.Module):
     def __init__(self):
         super(PoseLoss, self).__init__()
-        self.alpha = nn.Parameter(torch.Tensor(1)).cuda()
-        self.beta = nn.Parameter(torch.Tensor(1)).cuda()
-        nn.init.normal_(self.alpha.data, mean=0, std=0.1)
-        nn.init.normal_(self.beta.data, mean=0, std=0.1)
+        self.t_loss_fn = nn.L1Loss()
+        self.q_loss_fn = nn.L1Loss()
+        self.t_coeff = nn.Parameter(torch.Tensor(1))
+        self.q_coeff = nn.Parameter(torch.Tensor(1))
+        nn.init.constant_(self.t_coeff, 0.0)
+        nn.init.constant_(self.q_coeff, -3.0)
 
     def forward(self, pred_pose, real_pose):
-        diff_t, diff_q = torch.split(pred_pose - real_pose, [3, 3], dim=1)
-        norm_t = torch.norm(diff_t)
-        norm_q = torch.norm(diff_q)
+        # t_pred, q_pred = torch.split(pred_pose, [3, 3], dim=1)
+        t_real, q_real = torch.split(real_pose, [3, 3], dim=1)
+        # t_loss = self.t_loss_fn(t_pred, t_real)
+        # q_loss = self.q_loss_fn(q_pred, q_real)
+        q_loss = self.q_loss_fn(pred_pose, q_real)
 
-        return torch.exp(-self.beta) * norm_t + self.beta + torch.exp(-self.alpha) * norm_q + self.alpha
+        # return torch.exp(-self.t_coeff) * t_loss + self.t_coeff, torch.exp(-self.q_coeff) * q_loss + self.q_coeff
+        return torch.exp(-self.q_coeff) * q_loss + self.q_coeff

@@ -7,6 +7,7 @@ import cv2
 import torch
 import numpy as np
 from scipy import stats
+from scipy.spatial.transform import Rotation as R
 
 
 def fetch_struct3d_path(root, sample, isfull, fn):
@@ -126,8 +127,17 @@ class Struct3DDataset(BaseDataset):
 
         # camera pose
         pose_path = self.pose_paths[index]
-        pose_np = np.genfromtxt(pose_path, delimiter=' ')
-        pose_tensor = torch.Tensor(pose_np[:6])
+        pose_raw_np = np.genfromtxt(pose_path, delimiter=' ')
+        pose_np = np.zeros(6)
+        pose_np[:3] = pose_raw_np[:3]
+
+        rot_y = pose_raw_np[3:6]
+        rot_z = pose_raw_np[6:9]
+        rot_x = np.cross(rot_y, rot_z)
+        rot = np.stack((rot_x, rot_y, rot_z)).T
+        quat = R.from_matrix(rot).as_quat()
+        pose_np[3:] = quat[1:] / np.linalg.norm(quat[1:]) * np.arccos(quat[0])
+        pose_tensor = torch.Tensor(pose_np)
         
         input_dict = {
             'label': label_onehot_tensor,

@@ -19,12 +19,14 @@ class IndoorModel(Pix2PixModel):
         if opt.isTrain:
             self.criterionGAN = networks.GANLoss(
                 opt.gan_mode, tensor=self.FloatTensor, opt=self.opt)
-            self.criterionPose = networks.PoseLoss()
             self.criterionFeat = torch.nn.L1Loss()
             if not opt.no_vgg_loss:
                 self.criterionVGG = networks.VGGLoss(self.opt.gpu_ids)
             if opt.use_vae:
                 self.KLDLoss = networks.KLDLoss()
+
+            self.criterionPose = networks.PoseLoss()
+            self.criterionPose = self.criterionPose.cuda()
 
     def initialize_networks(self, opt):
         netG, netD, netE = Pix2PixModel.initialize_networks(self, opt)
@@ -36,15 +38,28 @@ class IndoorModel(Pix2PixModel):
 
     def create_pose_optimizer(self, opt):
         P_params = list(self.netP.parameters())
+        P_loss_params = list(self.criterionPose.parameters())
+        # P_all_params = P_params + P_loss_params
 
         beta1, beta2 = opt.beta1, opt.beta2
         if opt.no_TTUR:
-            G_lr, D_lr = opt.lr, opt.lr
+            P_lr = opt.lr
         else:
-            G_lr, D_lr = opt.lr / 2, opt.lr * 2
+            P_lr = opt.lr * 2
 
-        optimizer_P = torch.optim.Adam(P_params, lr=G_lr, betas=(beta1, beta2))
-        return optimizer_P
+        optimizer_P = torch.optim.Adam(P_params, lr=P_lr, betas=(beta1, beta2))
+        optimizer_PL = torch.optim.Adam(P_loss_params, lr=P_lr, betas=(beta1, beta2))
+        return optimizer_P, optimizer_PL
+
+    def save(self, epoch, pose_phase=False):
+        if pose_phase:
+            util.save_network(self.netP, 'P1', epoch, self.opt)
+        else:
+            util.save_network(self.netG, 'G', epoch, self.opt)
+            util.save_network(self.netD, 'D', epoch, self.opt)
+            if self.opt.use_vae:
+                util.save_network(self.netE, 'E', epoch, self.opt)
+            util.save_network(self.netP, 'P2', epoch, self.opt)
 
     def preprocess_input(self, data):
         # move to GPU and change data types
@@ -145,7 +160,12 @@ class IndoorModel(Pix2PixModel):
         losses = {}
 
         pred_pose = self.netP(real_image)
-        losses['pose'] = self.criterionPose(pred_pose, real_pose)
+        q_pose = self.criterionPose(pred_pose, real_pose)
+        # losses['t_pose'] = t_pose
+        losses['q_pose'] = q_pose
+
+        # losses['t_coeff'] = self.criterionPose.t_coeff.data
+        # losses['q_coeff'] = self.criterionPose.q_coeff.data
         return losses, pred_pose
 
     def generate_fake(self, input_semantics, empty_image, compute_kld_loss=False):
