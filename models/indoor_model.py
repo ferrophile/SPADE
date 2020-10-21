@@ -31,8 +31,9 @@ class IndoorModel(Pix2PixModel):
     def initialize_networks(self, opt):
         netG, netD, netE = Pix2PixModel.initialize_networks(self, opt)
         netP = networks.define_P(opt)
-        if not opt.isTrain or opt.continue_train:
-            netP = util.load_network(netP, 'P', opt.which_epoch, opt)
+
+        if not opt.isTrain or opt.continue_train or opt.load_posenet:
+            netP = util.load_network(netP, 'P1', opt.which_epoch, opt)
 
         return netG, netD, netE, netP
 
@@ -59,7 +60,8 @@ class IndoorModel(Pix2PixModel):
             util.save_network(self.netD, 'D', epoch, self.opt)
             if self.opt.use_vae:
                 util.save_network(self.netE, 'E', epoch, self.opt)
-            util.save_network(self.netP, 'P2', epoch, self.opt)
+
+            # util.save_network(self.netP, 'P2', epoch, self.opt)
 
     def preprocess_input(self, data):
         # move to GPU and change data types
@@ -153,6 +155,11 @@ class IndoorModel(Pix2PixModel):
                                                for_discriminator=True)
         D_losses['D_real'] = self.criterionGAN(pred_real, True,
                                                for_discriminator=True)
+
+        with torch.no_grad():
+            fake_pose = self.netP(fake_image)
+            real_pose = self.netP(real_image)
+        D_losses['D_pose'] = self.criterionPose(fake_pose, real_pose)
 
         return D_losses
 

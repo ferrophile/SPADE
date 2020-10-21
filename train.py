@@ -9,7 +9,6 @@ from options.train_options import TrainOptions
 import data
 from util.iter_counter import IterationCounter
 from util.visualizer import Visualizer
-from trainers.pix2pix_trainer import Pix2PixTrainer
 from trainers.pose_trainer import PoseTrainer
 
 # parse options
@@ -26,20 +25,55 @@ dataloader = data.create_dataloader(opt)
 trainer = PoseTrainer(opt)
 
 # create tool for counting iterations
+pose_iter_counter = IterationCounter(opt, len(dataloader))
+pose_iter_counter.total_epochs = opt.niter_pose
 iter_counter = IterationCounter(opt, len(dataloader))
 
 # create tool for visualization
 visualizer = Visualizer(opt)
 
-print('Pre-training pose network...')
-pose_phase = True
+if not opt.load_posenet:
+    print('Pre-training pose network...')
+    pose_phase = True
+
+    for epoch in pose_iter_counter.training_epochs():
+        iter_counter.record_epoch_start(epoch)
+        for i, data_i in enumerate(dataloader, start=iter_counter.epoch_iter):
+            iter_counter.record_one_iteration()
+
+            trainer.run_posenet_one_step(data_i)
+
+            # Visualizations
+            if iter_counter.needs_printing():
+                losses = trainer.get_latest_losses(pose_phase)
+                visualizer.print_current_errors(epoch, iter_counter.epoch_iter,
+                                                losses, iter_counter.time_per_iter)
+                visualizer.plot_current_errors(losses, iter_counter.total_steps_so_far)
+
+            if iter_counter.needs_saving():
+                print('saving the latest model (epoch %d, total_steps %d)' %
+                      (epoch, iter_counter.total_steps_so_far))
+                trainer.save('latest', pose_phase)
+                iter_counter.record_current_iter()
+
+        trainer.update_learning_rate(epoch, pose_phase)
+        iter_counter.record_epoch_end()
+
+        if epoch % opt.save_epoch_freq == 0 or \
+           epoch == iter_counter.total_epochs:
+            print('saving the model at the end of epoch %d, iters %d' %
+                  (epoch, iter_counter.total_steps_so_far))
+            trainer.save('latest', pose_phase)
+            trainer.save(epoch, pose_phase)
+
+print('Start training generator...')
+pose_phase = False
 
 for epoch in iter_counter.training_epochs():
     iter_counter.record_epoch_start(epoch)
     for i, data_i in enumerate(dataloader, start=iter_counter.epoch_iter):
         iter_counter.record_one_iteration()
 
-        '''
         # Training
         # train generator
         if i % opt.D_steps_per_G == 0:
@@ -47,24 +81,20 @@ for epoch in iter_counter.training_epochs():
 
         # train discriminator
         trainer.run_discriminator_one_step(data_i)
-        '''
-        trainer.train_one_step(data_i)
 
         # Visualizations
         if iter_counter.needs_printing():
-            losses = trainer.get_latest_losses()
+            losses = trainer.get_latest_losses(pose_phase)
             visualizer.print_current_errors(epoch, iter_counter.epoch_iter,
                                             losses, iter_counter.time_per_iter)
             visualizer.plot_current_errors(losses, iter_counter.total_steps_so_far)
 
-        '''
         if iter_counter.needs_displaying():
             visuals = OrderedDict([('input_label', data_i['label']),
-                                   ('synthesized_image', trainer.get_latest_generated()),
+                                   ('synthesized_image', trainer.get_latest_generated(pose_phase)),
                                    ('empty_image', data_i['empty_image']),
                                    ('real_image', data_i['image'])])
             visualizer.display_current_results(visuals, epoch, iter_counter.total_steps_so_far)
-        '''
 
         if iter_counter.needs_saving():
             print('saving the latest model (epoch %d, total_steps %d)' %
@@ -72,7 +102,7 @@ for epoch in iter_counter.training_epochs():
             trainer.save('latest', pose_phase)
             iter_counter.record_current_iter()
 
-    trainer.update_learning_rate(epoch)
+    trainer.update_learning_rate(epoch, pose_phase)
     iter_counter.record_epoch_end()
 
     if epoch % opt.save_epoch_freq == 0 or \

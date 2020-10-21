@@ -132,10 +132,10 @@ class PoseLoss(nn.Module):
 
     def forward(self, pred_pose, real_pose):
         # t_pred, q_pred = torch.split(pred_pose, [3, 3], dim=1)
-        t_real, q_real = torch.split(real_pose, [3, 3], dim=1)
+        # t_real, q_real = torch.split(real_pose, [3, 3], dim=1)
         # t_loss = self.t_loss_fn(t_pred, t_real)
         # q_loss = self.q_loss_fn(q_pred, q_real)
-        q_loss = self.q_loss_fn(pred_pose, q_real)
+        q_loss = self.q_loss_fn(pred_pose, real_pose)
 
         # return torch.exp(-self.t_coeff) * t_loss + self.t_coeff, torch.exp(-self.q_coeff) * q_loss + self.q_coeff
         return torch.exp(-self.q_coeff) * q_loss + self.q_coeff
