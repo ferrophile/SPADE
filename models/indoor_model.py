@@ -123,6 +123,10 @@ class IndoorModel(Pix2PixModel):
         G_losses['GAN'] = self.criterionGAN(pred_fake, True,
                                             for_discriminator=False)
 
+        fake_pose = self.netP(fake_image)
+        real_pose = self.netP(real_image)
+        G_losses['Pose'] = self.criterionPose(fake_pose, real_pose) * 0.001
+
         if not self.opt.no_ganFeat_loss:
             num_D = len(pred_fake)
             GAN_Feat_loss = self.FloatTensor(1).fill_(0)
@@ -155,11 +159,6 @@ class IndoorModel(Pix2PixModel):
                                                for_discriminator=True)
         D_losses['D_real'] = self.criterionGAN(pred_real, True,
                                                for_discriminator=True)
-
-        with torch.no_grad():
-            fake_pose = self.netP(fake_image)
-            real_pose = self.netP(real_image)
-        D_losses['D_pose'] = self.criterionPose(fake_pose, real_pose)
 
         return D_losses
 

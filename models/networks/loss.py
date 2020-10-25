@@ -123,11 +123,11 @@ class KLDLoss(nn.Module):
 class PoseLoss(nn.Module):
     def __init__(self):
         super(PoseLoss, self).__init__()
-        self.t_loss_fn = nn.L1Loss()
+        # self.t_loss_fn = nn.L1Loss()
         self.q_loss_fn = nn.L1Loss()
-        self.t_coeff = nn.Parameter(torch.Tensor(1))
+        # self.t_coeff = nn.Parameter(torch.Tensor(1))
         self.q_coeff = nn.Parameter(torch.Tensor(1))
-        nn.init.constant_(self.t_coeff, 0.0)
+        # nn.init.constant_(self.t_coeff, 0.0)
         nn.init.constant_(self.q_coeff, -3.0)
 
     def forward(self, pred_pose, real_pose):
