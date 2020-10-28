@@ -2,6 +2,7 @@ from models.pix2pix_model import Pix2PixModel
 import torch
 import models.networks as networks
 import util.util as util
+from util.detectron import Struct3dDetectron
 
 
 class IndoorModel(Pix2PixModel):
@@ -14,6 +15,7 @@ class IndoorModel(Pix2PixModel):
             else torch.ByteTensor
 
         self.netG, self.netD, self.netE, self.netP = self.initialize_networks(opt)
+        # self.detectron = Struct3dDetectron('../detectron/checkpoints/rgb_sem')
 
         # set loss functions
         if opt.isTrain:
@@ -174,9 +176,15 @@ class IndoorModel(Pix2PixModel):
         # losses['q_coeff'] = self.criterionPose.q_coeff.data
         return losses, pred_pose
 
+    def generate_label(self, proposal_data):
+        label_tensor = self.detectron.predict(proposal_data, self.opt)
+        label_tensor = label_tensor.cuda()
+        return label_tensor
+
     def generate_fake(self, input_semantics, empty_image, compute_kld_loss=False):
         z = None
         KLD_loss = None
+
         if self.opt.use_vae:
             z, mu, logvar = self.encode_z(empty_image)
             if compute_kld_loss:

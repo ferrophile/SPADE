@@ -4,6 +4,7 @@ import util.util as util
 from PIL import Image
 import os
 import cv2
+import json
 import torch
 import numpy as np
 from scipy import stats
@@ -42,20 +43,21 @@ class Struct3DDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
 
-        label_paths, instance_paths, image_paths, empty_image_paths, pose_paths = self.get_paths(opt)
+        label_paths, instance_paths, image_paths, empty_image_paths, pose_paths, boxes_paths = self.get_paths(opt)
 
         util.natural_sort(label_paths)
         util.natural_sort(instance_paths)
         util.natural_sort(image_paths)
         util.natural_sort(empty_image_paths)
         util.natural_sort(pose_paths)
+        util.natural_sort(boxes_paths)
 
         self.label_paths = label_paths[:opt.max_dataset_size]
         self.instance_paths = instance_paths[:opt.max_dataset_size]
         self.image_paths = image_paths[:opt.max_dataset_size]
         self.empty_image_paths = empty_image_paths[:opt.max_dataset_size]
         self.pose_paths = pose_paths[:opt.max_dataset_size]
-
+        self.boxes_paths = boxes_paths[:opt.max_dataset_size]
         size = len(self.label_paths)
         self.dataset_size = size
 
@@ -71,8 +73,10 @@ class Struct3DDataset(BaseDataset):
         empty_paths = [fetch_struct3d_path(opt.dataroot, sample, 'empty', 'rgb_rawlight.png') for sample in split_list]
         pose_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'camera_pose.txt') for sample in split_list]
 
+        boxes_paths = ['../detectron/proposals/{}_{}_{}.json'.format(*sample) for sample in split_list]
+
         assert len(image_paths) == len(label_paths) == len(empty_paths)
-        return label_paths, instance_paths, image_paths, empty_paths, pose_paths
+        return label_paths, instance_paths, image_paths, empty_paths, pose_paths, boxes_paths
 
     def get_label_onehot_tensor(self, label_tensor, instance_np):
         label_np = label_tensor.squeeze().numpy().astype(np.int)
@@ -96,6 +100,20 @@ class Struct3DDataset(BaseDataset):
         label_onehot_tensor = torch.Tensor(label_onehot_np)
         return label_onehot_tensor
 
+    def load_label_onehot_tensor(self, box_path, load_size):
+        width, height = load_size
+        label_onehot_np = np.zeros((self.opt.semantic_nc, height, width), dtype=np.int)
+        with open(box_path, 'r') as f:
+            anns = json.load(f)
+
+        for box in anns:
+            pred_class = box['class']
+            x1, y1, x2, y2 = box['box']
+            label_onehot_np[pred_class, y1:y2, x1:x2] = 1
+
+        label_onehot_tensor = torch.Tensor(label_onehot_np)
+        return label_onehot_tensor
+
     def __getitem__(self, index):
         # Label Image
         label_path = self.label_paths[index]
@@ -109,7 +127,10 @@ class Struct3DDataset(BaseDataset):
         transform_instance = get_transform(self.opt, params, method=Image.NEAREST, normalize=False, toTensor=False)
         instance_np = np.array(transform_instance(instance))
 
-        label_onehot_tensor = self.get_label_onehot_tensor(label_tensor, instance_np)
+        # label_onehot_tensor = self.get_label_onehot_tensor(label_tensor, instance_np)
+        label_onehot_tensor = self.load_label_onehot_tensor(self.boxes_paths[index], label.size)
+        transform_label.transforms = transform_label.transforms[:1]
+        label_onehot_tensor = transform_label(label_onehot_tensor)
 
         # full input image
         transform_image = get_transform(self.opt, params)
