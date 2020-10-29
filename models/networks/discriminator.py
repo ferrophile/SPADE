@@ -3,6 +3,7 @@ Copyright (C) 2019 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
 
+import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
@@ -95,6 +96,10 @@ class NLayerDiscriminator(BaseNetwork):
 
         sequence += [[nn.Conv2d(nf, 1, kernel_size=kw, stride=1, padding=padw)]]
 
+        self.pose_avgpool = nn.AdaptiveAvgPool2d(1)
+        self.pose_fc1 = nn.Linear(512, 2048)
+        self.pose_fc2 = nn.Linear(2048, 3)
+
         # We divide the layers into groups to extract intermediate layer outputs
         for n in range(len(sequence)):
             self.add_module('model' + str(n), nn.Sequential(*sequence[n]))
@@ -107,14 +112,26 @@ class NLayerDiscriminator(BaseNetwork):
             input_nc += 1
         return input_nc
 
-    def forward(self, input):
+    def forward(self, input, eval_pose=True):
         results = [input]
-        for submodel in self.children():
+        for submodel in [self.model0, self.model1, self.model2, self.model3, self.model4]:
             intermediate_output = submodel(results[-1])
             results.append(intermediate_output)
 
         get_intermediate_features = not self.opt.no_ganFeat_loss
+
+        pose = None
+        if eval_pose:
+            pose_features = results[-2]
+            pose = self.pose_avgpool(pose_features)
+            pose = torch.flatten(pose, 1)
+            pose = F.relu(self.pose_fc1(pose))
+            pose = F.dropout(pose, p=0.5)
+            pose = self.pose_fc2(pose)
+
+        # results.append(pose)
+
         if get_intermediate_features:
             return results[1:]
         else:
-            return results[-1]
+            return results[-1:]

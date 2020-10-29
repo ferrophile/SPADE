@@ -89,6 +89,7 @@ class Struct3DDataset(BaseDataset):
             obj_class = int(stats.mode(label_np[obj_mask]).mode[0])
             obj_class = self.class_ids[str(obj_class)]
 
+            '''
             rows = np.any(obj_mask, axis=1)
             cols = np.any(obj_mask, axis=0)
             rmin, rmax = np.where(rows)[0][[0, -1]]
@@ -96,6 +97,9 @@ class Struct3DDataset(BaseDataset):
 
             label_onehot_np[0, rmin:rmax + 1, cmin:cmax + 1] = 0
             label_onehot_np[obj_class, rmin:rmax + 1, cmin:cmax + 1] = 1
+            '''
+            label_onehot_np[0][obj_mask] = 0
+            label_onehot_np[obj_class][obj_mask] = 1
 
         label_onehot_tensor = torch.Tensor(label_onehot_np)
         return label_onehot_tensor
@@ -127,10 +131,10 @@ class Struct3DDataset(BaseDataset):
         transform_instance = get_transform(self.opt, params, method=Image.NEAREST, normalize=False, toTensor=False)
         instance_np = np.array(transform_instance(instance))
 
-        # label_onehot_tensor = self.get_label_onehot_tensor(label_tensor, instance_np)
-        label_onehot_tensor = self.load_label_onehot_tensor(self.boxes_paths[index], label.size)
-        transform_label.transforms = transform_label.transforms[:1]
-        label_onehot_tensor = transform_label(label_onehot_tensor)
+        label_onehot_tensor = self.get_label_onehot_tensor(label_tensor, instance_np)
+        # label_onehot_tensor = self.load_label_onehot_tensor(self.boxes_paths[index], label.size)
+        # transform_label.transforms = transform_label.transforms[:1]
+        # label_onehot_tensor = transform_label(label_onehot_tensor)
 
         # full input image
         transform_image = get_transform(self.opt, params)

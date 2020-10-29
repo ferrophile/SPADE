@@ -125,10 +125,6 @@ class IndoorModel(Pix2PixModel):
         G_losses['GAN'] = self.criterionGAN(pred_fake, True,
                                             for_discriminator=False)
 
-        fake_pose = self.netP(fake_image)
-        real_pose = self.netP(real_image)
-        G_losses['Pose'] = self.criterionPose(fake_pose, real_pose) * 0.001
-
         if not self.opt.no_ganFeat_loss:
             num_D = len(pred_fake)
             GAN_Feat_loss = self.FloatTensor(1).fill_(0)
@@ -199,3 +195,15 @@ class IndoorModel(Pix2PixModel):
             "You cannot compute KLD loss if opt.use_vae == False"
 
         return fake_image, KLD_loss
+
+    def discriminate(self, input_semantics, fake_image, real_image):
+        fake_concat = torch.cat([input_semantics, fake_image], dim=1)
+        real_concat = torch.cat([input_semantics, real_image], dim=1)
+
+        fake_and_real = torch.cat([fake_concat, real_concat], dim=0)
+
+        discriminator_out = self.netD(fake_and_real)
+
+        pred_fake, pred_real = self.divide_pred(discriminator_out)
+
+        return pred_fake, pred_real
