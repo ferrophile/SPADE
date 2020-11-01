@@ -1,15 +1,47 @@
 from models.pix2pix_model import Pix2PixModel
-
 import torch
+import models.networks as networks
+import util.util as util
+import util.transformation as trans_utils
+
 
 class IndoorModel(Pix2PixModel):
+    def __init__(self, opt):
+        torch.nn.Module.__init__(self)
+        self.opt = opt
+        self.FloatTensor = torch.cuda.FloatTensor if self.use_gpu() \
+            else torch.FloatTensor
+        self.ByteTensor = torch.cuda.ByteTensor if self.use_gpu() \
+            else torch.ByteTensor
+
+        self.netG, self.netD, self.netE, self.netT = self.initialize_networks(opt)
+        self.criterionBoxes = torch.nn.L1Loss()
+
+        # set loss functions
+        if opt.isTrain:
+            self.criterionGAN = networks.GANLoss(
+                opt.gan_mode, tensor=self.FloatTensor, opt=self.opt)
+            self.criterionFeat = torch.nn.L1Loss()
+            if not opt.no_vgg_loss:
+                self.criterionVGG = networks.VGGLoss(self.opt.gpu_ids)
+            if opt.use_vae:
+                self.KLDLoss = networks.KLDLoss()
+
+    def initialize_networks(self, opt):
+        netG, netD, netE = Pix2PixModel.initialize_networks(self, opt)
+        netT = networks.define_T(opt)
+
+        if not opt.isTrain or opt.continue_train:
+            netT = util.load_network(netT, 'T', opt.which_epoch, opt)
+
+        return netG, netD, netE, netT
+
     def preprocess_input(self, data):
         # move to GPU and change data types
-        data['label'] = data['label']
         if self.use_gpu():
-            data['label'] = data['label'].cuda()
-            data['image'] = data['image'].cuda()
-            data['empty_image'] = data['empty_image'].cuda()
+            for k in data.keys():
+                if k != 'path':
+                    data[k] = data[k].cuda()
 
         # create one-hot label map
         label_map = data['label']
@@ -24,10 +56,10 @@ class IndoorModel(Pix2PixModel):
         else:
             input_semantics = label_map
 
-        return input_semantics, data['image'], data['empty_image']
+        return input_semantics, data['image'], data['empty_image'], data['instance'], data['semantic']
 
     def forward(self, data, mode):
-        input_semantics, real_image, empty_image = self.preprocess_input(data)
+        input_semantics, real_image, empty_image, instances, fine_semantics = self.preprocess_input(data)
 
         if mode == 'generator':
             g_loss, generated = self.compute_generator_loss(input_semantics, real_image, empty_image)
@@ -35,6 +67,9 @@ class IndoorModel(Pix2PixModel):
         elif mode == 'discriminator':
             d_loss = self.compute_discriminator_loss(input_semantics, real_image, empty_image)
             return d_loss
+        elif mode == 'transform_generator':
+            tg_loss, input, output = self.compute_transform_generator_loss(empty_image, instances, fine_semantics)
+            return tg_loss, input, output
         elif mode == 'encode_only':
             z, mu, logvar = self.encode_z(empty_image)
             return mu, logvar
@@ -44,6 +79,33 @@ class IndoorModel(Pix2PixModel):
             return fake_image
         else:
             raise ValueError("|mode| is invalid")
+
+    def create_optimizers(self, opt):
+        G_params = list(self.netT.parameters())
+        if opt.use_vae:
+            G_params += list(self.netE.parameters())
+        if opt.isTrain:
+            D_params = list(self.netD.parameters())
+
+        beta1, beta2 = opt.beta1, opt.beta2
+        if opt.no_TTUR:
+            G_lr, D_lr = opt.lr, opt.lr
+        else:
+            G_lr, D_lr = opt.lr / 2, opt.lr * 2
+
+        optimizer_G = torch.optim.Adam(G_params, lr=G_lr, betas=(beta1, beta2))
+        optimizer_D = torch.optim.Adam(D_params, lr=D_lr, betas=(beta1, beta2))
+
+        return optimizer_G, optimizer_D
+
+    def save(self, epoch):
+        # util.save_network(self.netG, 'G', epoch, self.opt)
+        util.save_network(self.netT, 'T', epoch, self.opt)
+        util.save_network(self.netD, 'D', epoch, self.opt)
+        '''
+        if self.opt.use_vae:
+            util.save_network(self.netE, 'E', epoch, self.opt)
+        '''
 
     def compute_generator_loss(self, input_semantics, real_image, empty_image):
         G_losses = {}
@@ -93,6 +155,26 @@ class IndoorModel(Pix2PixModel):
                                                for_discriminator=True)
 
         return D_losses
+
+    def compute_transform_generator_loss(self, empty_image, instances, fine_semantics):
+        TG_losses = {}
+
+        fine_tensors, box_tensors, semantic_classes = trans_utils.instances_to_boxes(instances, fine_semantics)
+        box_counts = [len(b) for b in box_tensors]
+        box_tensor = torch.cat(box_tensors, dim=0)
+        pred_box_tensor = self.netT(box_tensor, empty_image, box_counts)
+        pred_box_tensors = torch.split(pred_box_tensor, box_counts)
+
+        all_fine_tensor = torch.cat(fine_tensors, dim=0)
+        TG_losses['Boxes'] = self.criterionBoxes(all_fine_tensor, pred_box_tensor)
+
+        input_tensors = [trans_utils.boxes_to_labels(pb, s) for pb, s in zip(box_tensors, semantic_classes)]
+        input_tensors = torch.stack(input_tensors, dim=0)
+
+        output_tensors = [trans_utils.boxes_to_labels(pb, s) for pb, s in zip(pred_box_tensors, semantic_classes)]
+        output_tensors = torch.stack(output_tensors, dim=0)
+
+        return TG_losses, input_tensors, output_tensors
 
     def generate_fake(self, input_semantics, empty_image, compute_kld_loss=False):
         z = None

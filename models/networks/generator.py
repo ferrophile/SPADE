@@ -127,21 +127,21 @@ class Pix2PixHDGenerator(BaseNetwork):
                             help='kernel size of the resnet block')
         parser.add_argument('--resnet_initial_kernel_size', type=int, default=7,
                             help='kernel size of the first convolution')
-        parser.set_defaults(norm_G='instance')
+        parser.set_defaults(norm_T='spectralinstance')
         return parser
 
     def __init__(self, opt):
         super().__init__()
         input_nc = opt.label_nc + (1 if opt.contain_dontcare_label else 0) + (0 if opt.no_instance else 1)
 
-        norm_layer = get_nonspade_norm_layer(opt, opt.norm_G)
+        norm_layer = get_nonspade_norm_layer(opt, opt.norm_T)
         activation = nn.ReLU(False)
 
         model = []
 
         # initial conv
         model += [nn.ReflectionPad2d(opt.resnet_initial_kernel_size // 2),
-                  norm_layer(nn.Conv2d(input_nc, opt.ngf,
+                  norm_layer(nn.Conv2d(input_nc + 3, opt.ngf,
                                        kernel_size=opt.resnet_initial_kernel_size,
                                        padding=0)),
                   activation]
@@ -161,6 +161,8 @@ class Pix2PixHDGenerator(BaseNetwork):
                                   activation=activation,
                                   kernel_size=opt.resnet_kernel_size)]
 
+        nc_out = opt.ngf * mult
+
         # upsample
         for i in range(opt.resnet_n_downsample):
             nc_in = int(opt.ngf * mult)
@@ -173,10 +175,87 @@ class Pix2PixHDGenerator(BaseNetwork):
 
         # final output conv
         model += [nn.ReflectionPad2d(3),
-                  nn.Conv2d(nc_out, opt.output_nc, kernel_size=7, padding=0),
-                  nn.Tanh()]
+                  nn.Conv2d(nc_out, input_nc, kernel_size=7, padding=0),
+                  nn.Sigmoid()]
 
         self.model = nn.Sequential(*model)
 
     def forward(self, input, z=None):
         return self.model(input)
+
+
+def vec_to_perspective(vec):
+    out = torch.cat((vec, torch.ones((vec.shape[0], 1), dtype=vec.dtype, device=vec.device)),
+                    dim=1).reshape(vec.shape[0], -1)
+    return out.view(-1, 3, 3)
+
+
+def apply_transform(boxes, transform):
+    N, C, H, W = boxes.shape
+    device = boxes.device
+
+    x, y = torch.meshgrid([torch.linspace(-1, 1, H), torch.linspace(-1, 1, W)])
+    x, y = x.flatten(), y.flatten()
+    xy_hom = torch.stack([x, y, torch.ones(x.shape[0])], dim=0).unsqueeze(0).to(device)
+    xy_transformed = transform.matmul(xy_hom)
+
+    grid = xy_transformed[:, :2, :] / (xy_transformed[:, 2, :].unsqueeze(1) + 1e-9)
+    grid = grid.permute(0, 2, 1).reshape(-1, H, W, 2)
+    grid = grid.expand(N, *grid.shape[1:])
+
+    transformed_boxes = F.grid_sample(boxes, grid, mode='bilinear')
+    transformed_boxes.transpose_(3, 2)
+
+    return transformed_boxes
+
+
+class STNGenerator(BaseNetwork):
+    def __init__(self, opt):
+        super().__init__()
+
+        self.opt = opt
+
+        kw = 3
+        padw = 1
+        nf = opt.ndf
+        input_nc = 4  # 1 from box, 3 from background
+
+        norm_layer = get_nonspade_norm_layer(opt, opt.norm_D)
+        sequence = [nn.Conv2d(input_nc, nf, kernel_size=kw, stride=2, padding=padw),
+                    nn.LeakyReLU(0.2, False)]
+
+        for n in range(1, 6):
+            nf_prev = nf
+            nf = min(nf * 2, 512)
+            stride = 2
+            sequence += [norm_layer(nn.Conv2d(nf_prev, nf, kernel_size=kw, stride=stride, padding=padw)),
+                         nn.LeakyReLU(0.2, False)]
+
+        sequence += [nn.AdaptiveAvgPool2d(1)]
+        self.localnet_conv = nn.Sequential(*sequence)
+        self.localnet_fc = nn.Linear(512, 8)
+
+    def init_weights(self, init_type='normal', gain=0.02):
+        super().init_weights(init_type, gain)
+
+        self.localnet_fc.weight.data.zero_()
+        self.localnet_fc.bias.data.copy_(torch.eye(3).flatten()[:-1])
+
+    '''
+    boxes: (B, H, W)
+    empty_image: (N, 3, H, W)
+    boxes_count: (N, ), sum to B
+    '''
+    def forward(self, boxes, empty_image, boxes_count):
+        empty_images = torch.split(empty_image, 1)  # Nx (3, H, W)
+        empty_images = [img.expand(c, -1, -1, -1) for img, c in zip(empty_images, boxes_count)]
+        empty_images = torch.cat(empty_images, dim=0)  # (B, 3, H, W)
+
+        boxes = boxes.unsqueeze(1)  # (B, 1, H, W)
+        x = self.localnet_conv(torch.cat((boxes, empty_images), dim=1))
+        x = torch.flatten(x, 1)
+        theta = self.localnet_fc(x)
+        theta = vec_to_perspective(theta)
+
+        transformed_boxes = apply_transform(boxes, theta)
+        return transformed_boxes.squeeze(1)  # (B, H, W)

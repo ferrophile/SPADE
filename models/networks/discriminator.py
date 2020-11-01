@@ -67,7 +67,7 @@ class MultiscaleDiscriminator(BaseNetwork):
 class NLayerDiscriminator(BaseNetwork):
     @staticmethod
     def modify_commandline_options(parser, is_train):
-        parser.add_argument('--n_layers_D', type=int, default=4,
+        parser.add_argument('--n_layers_D', type=int, default=6,
                             help='# layers in each discriminator')
         return parser
 
@@ -75,7 +75,7 @@ class NLayerDiscriminator(BaseNetwork):
         super().__init__()
         self.opt = opt
 
-        kw = 4
+        kw = 3
         padw = int(np.ceil((kw - 1.0) / 2))
         nf = opt.ndf
         input_nc = self.compute_D_input_nc(opt)
@@ -87,13 +87,14 @@ class NLayerDiscriminator(BaseNetwork):
         for n in range(1, opt.n_layers_D):
             nf_prev = nf
             nf = min(nf * 2, 512)
-            stride = 1 if n == opt.n_layers_D - 1 else 2
+            # stride = 1 if n == opt.n_layers_D - 1 else 2
+            stride = 2
             sequence += [[norm_layer(nn.Conv2d(nf_prev, nf, kernel_size=kw,
                                                stride=stride, padding=padw)),
                           nn.LeakyReLU(0.2, False)
                           ]]
 
-        sequence += [[nn.Conv2d(nf, 1, kernel_size=kw, stride=1, padding=padw)]]
+        sequence += [[nn.Conv2d(nf, 1, kernel_size=kw, stride=2, padding=padw)]]
 
         # We divide the layers into groups to extract intermediate layer outputs
         for n in range(len(sequence)):
