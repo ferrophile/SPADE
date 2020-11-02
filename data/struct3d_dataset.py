@@ -62,7 +62,7 @@ class Struct3DDataset(BaseDataset):
         root = opt.dataroot
         phase = 'val' if opt.phase == 'test' else 'train'
 
-        split_list_path = os.path.join(opt.dataroot, '{}_split.csv'.format(opt.phase))
+        split_list_path = os.path.join(opt.dataroot, '{}_split_transform.csv'.format(opt.phase))
         split_list = np.genfromtxt(split_list_path, delimiter=',', dtype='|U')
         label_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'semantic') for sample in split_list]
         instance_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'instance') for sample in split_list]
@@ -144,11 +144,13 @@ class Struct3DDataset(BaseDataset):
         empty_image = empty_image.convert('RGB')
         empty_image_tensor = transform_image(empty_image)
 
+        '''
         # normal
         layout_path = self.layout_paths[index]
         layout = Image.open(layout_path)
         layout = layout.convert('RGB')
         layout_tensor = transform_image(layout)
+        '''
         
         input_dict = {
             'instance': instance_tensor,
@@ -157,7 +159,6 @@ class Struct3DDataset(BaseDataset):
             'fine_label': label_fine_tensor,
             'image': image_tensor,
             'empty_image': empty_image_tensor,
-            'layout': layout_tensor,
             'path': image_path,
         }
 

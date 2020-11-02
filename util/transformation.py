@@ -30,7 +30,8 @@ def instances_to_boxes(instances_tensor, semantic_tensor):
             cmin, cmax = np.nonzero(cols[i])[0][[0, -1]]
             box_np[i, rmin:rmax+1, cmin:cmax+1] = 1
 
-        null_mask = (semantic_classes != 0)
+        # null_mask = (semantic_classes != 0)
+        null_mask = (np.isin(semantic_classes, [3, 8, 10, 14]))
         semantic_classes = semantic_classes[null_mask]
         box_np = box_np[null_mask]
         fine_tensor = fine_tensor[null_mask]
