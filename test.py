@@ -35,14 +35,22 @@ for i, data_i in enumerate(dataloader):
     if i * opt.batchSize >= opt.how_many:
         break
 
-    generated = model(data_i, mode='inference')
+    test_mode = 'transform_inference' if opt.transform_inference else 'inference'
+    generated = model(data_i, mode=test_mode)
 
     img_path = data_i['path']
-    for b in range(generated.shape[0]):
+    for b in range(generated['input'].shape[0]):
         print('process image... %s' % img_path[b])
-        visuals = OrderedDict([('input_label', data_i['label'][b]),
-                               ('synthesized_image', generated[b]),
-                               ('empty_image', data_i['empty_image'][b])])
+
+        if opt.transform_inference:
+            visuals = OrderedDict([('input_label', generated['input'][b]),
+                                   ('synthesized_label', generated['out_sem'][b]),
+                                   ('fine_label', data_i['fine_label'][b]),
+                                   ('empty_image', data_i['empty_image'][b])])
+        else:
+            visuals = OrderedDict([('input_label', data_i['label'][b]),
+                                   ('synthesized_image', generated['out_result'][b]),
+                                   ('empty_image', data_i['empty_image'][b])])
         visualizer.save_images(webpage, visuals, img_path[b:b + 1])
 
 webpage.save()

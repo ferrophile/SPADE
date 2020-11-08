@@ -62,7 +62,9 @@ class BaseOptions():
         parser.add_argument('--init_variance', type=float, default=0.02, help='variance of the initialization distribution')
         parser.add_argument('--z_dim', type=int, default=256,
                             help="dimension of the latent z vector")
+
         parser.add_argument('--bg_con', action='store_true', help='concatenate background to all resnet blocks')
+        parser.add_argument('--use_transform', action='store_true')
 
         # for instance-wise features
         parser.add_argument('--no_instance', action='store_true', help='if specified, do *not* add instance map as input')

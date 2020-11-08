@@ -40,7 +40,8 @@ for epoch in iter_counter.training_epochs():
             trainer.run_generator_one_step(data_i)
 
         # train discriminator
-        # trainer.run_discriminator_one_step(data_i)
+        if opt.train_phase == 'generate':
+            trainer.run_discriminator_one_step(data_i)
 
         # Visualizations
         if iter_counter.needs_printing():
@@ -50,11 +51,18 @@ for epoch in iter_counter.training_epochs():
             visualizer.plot_current_errors(losses, iter_counter.total_steps_so_far)
 
         if iter_counter.needs_displaying():
-            input_label, output_label = trainer.get_latest_generated()
-            visuals = OrderedDict([('input_label', input_label),
-                                   ('synthesized_label', output_label),
-                                   ('empty_image', data_i['empty_image']),
-                                   ('fine_label', data_i['fine_label'])])
+            generated = trainer.get_latest_generated()
+            if opt.train_phase == 'transform':
+                visuals = OrderedDict([('input_label', generated['input']),
+                                       ('synthesized_label', generated['out_sem']),
+                                       ('empty_image', data_i['empty_image']),
+                                       ('fine_label', data_i['fine_label'])])
+            else:
+                visuals = OrderedDict([('input_label', generated['input']),
+                                       ('synthesized_label', generated['out_sem']),
+                                       ('synthesized_image', generated['out_result']),
+                                       ('empty_image', data_i['empty_image']),
+                                       ('fine_label', data_i['fine_label'])])
             visualizer.display_current_results(visuals, epoch, iter_counter.total_steps_so_far)
 
         if iter_counter.needs_saving():

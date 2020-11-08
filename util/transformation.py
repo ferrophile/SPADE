@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-def instances_to_boxes(instances_tensor, semantic_tensor):
+def instances_to_boxes(instances_tensor, semantic_tensor, filter_classes):
     instances_fine_tensors = []
     instances_box_tensors = []
     semantic_class_lists = []
@@ -30,8 +30,11 @@ def instances_to_boxes(instances_tensor, semantic_tensor):
             cmin, cmax = np.nonzero(cols[i])[0][[0, -1]]
             box_np[i, rmin:rmax+1, cmin:cmax+1] = 1
 
-        # null_mask = (semantic_classes != 0)
-        null_mask = (np.isin(semantic_classes, [3, 8, 10, 14]))
+        if filter_classes:
+            null_mask = (np.isin(semantic_classes, [3, 8, 10, 14]))
+        else:
+            null_mask = (semantic_classes != 0)
+
         semantic_classes = semantic_classes[null_mask]
         box_np = box_np[null_mask]
         fine_tensor = fine_tensor[null_mask]
@@ -65,5 +68,5 @@ def boxes_to_labels(box_tensor, semantic_classes, nc=30):
     for i, s in enumerate(semantic_classes):
         labels_np[s] += box_np[i]
 
-    labels_tensor = torch.tensor(labels_np).cuda()
+    labels_tensor = torch.tensor(labels_np, dtype=torch.float).cuda()
     return labels_tensor

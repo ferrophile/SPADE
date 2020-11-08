@@ -118,3 +118,18 @@ class VGGLoss(nn.Module):
 class KLDLoss(nn.Module):
     def forward(self, mu, logvar):
         return -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+
+class ModifiedL1Loss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.abs_fn = torch.nn.LeakyReLU(-2.0)
+
+    def forward(self, loss_tensors):
+        losses = self.abs_fn(loss_tensors['pred_box'] - loss_tensors['fine'])
+        reduced_loss = torch.sum(torch.mean(losses, dim=(1, 2)))
+
+        sizes = torch.sum(loss_tensors['box'], dim=(1, 2))
+        normalized_loss = torch.div(reduced_loss, sizes)
+
+        return normalized_loss

@@ -3,7 +3,6 @@ import util.util as util
 
 from PIL import Image
 import os
-import cv2
 import torch
 import numpy as np
 from scipy import stats
@@ -62,7 +61,15 @@ class Struct3DDataset(BaseDataset):
         root = opt.dataroot
         phase = 'val' if opt.phase == 'test' else 'train'
 
-        split_list_path = os.path.join(opt.dataroot, '{}_split_transform.csv'.format(opt.phase))
+        if opt.isTrain and opt.train_phase == 'transform':
+            split_fmt = '{}_split_transform.csv'
+        elif not opt.isTrain and opt.transform_inference:
+            split_fmt = '{}_split_transform.csv'
+        else:
+            split_fmt = '{}_split.csv'
+
+        split_list_path = os.path.join(opt.dataroot, split_fmt.format(opt.phase))
+
         split_list = np.genfromtxt(split_list_path, delimiter=',', dtype='|U')
         label_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'semantic') for sample in split_list]
         instance_paths = [fetch_struct3d_path(opt.dataroot, sample, 'full', 'instance') for sample in split_list]

@@ -217,7 +217,7 @@ class STNGenerator(BaseNetwork):
 
         kw = 3
         padw = 1
-        nf = opt.ndf
+        nf = 64
         input_nc = 4  # 1 from box, 3 from background
 
         norm_layer = get_nonspade_norm_layer(opt, opt.norm_D)

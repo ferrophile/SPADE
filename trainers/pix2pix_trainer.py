@@ -32,12 +32,14 @@ class Pix2PixTrainer():
 
     def run_generator_one_step(self, data):
         self.optimizer_G.zero_grad()
-        g_losses, input, generated = self.pix2pix_model(data, mode='transform_generator')
+
+        g_mode = 'transform_generator' if self.opt.train_phase == 'transform' else 'generator'
+        g_losses, generated = self.pix2pix_model(data, mode=g_mode)
         g_loss = sum(g_losses.values()).mean()
         g_loss.backward()
         self.optimizer_G.step()
         self.g_losses = g_losses
-        self.generated = (input, generated)
+        self.generated = generated
 
     def run_discriminator_one_step(self, data):
         self.optimizer_D.zero_grad()
